@@ -1,4 +1,4 @@
-source('load-mnist-data.R') # run this once, and then comment out to save processing time.
+#source('load-mnist-data.R') # run this once, and then comment out to save processing time.
 
 n.inputs <- 784 # The input images are 28x28, for a total of 784 pixels
 n.hidden <- 30 # Number of hidden layer nodes. You can adjust this parameter once you get the network working.
@@ -36,10 +36,18 @@ hidden.to.output.weights <- matrix(rnorm(n.hidden*n.output,mean=0,sd=0.1), nrow=
 # job is to create the hidden.layer and output.layer variables in the appropriate way.
 # Don't forget to use the sigmoid.activation function created above.
 forward.pass <- function(input, input.to.hidden.weights, hidden.to.output.weights){
-  hidden.layer.activation <- NA # replace NAs with correct code
+  hidden.layer.activation <- NA
+  for(j in 1:ncol(input.to.hidden.weights)) {
+  hidden.layer.activation[j] <- sigmoid.activation(sum(input.to.hidden.weights[,j]*input))
+  }
   output.layer.activation <- NA
+  for(j in 1:ncol(hidden.to.output.weights)) {
+    output.layer.activation[j] <- sigmoid.activation(sum(hidden.to.output.weights[,j]*hidden.layer.activation))
+  }
   return(list(hidden=hidden.layer.activation, output=output.layer.activation))
 }
+
+#test1 <- forward.pass(trainData[1, ], input.to.hidden.weights, hidden.to.output.weights)
 
 # Now we can write the backward pass, or the backprop function.
 # The input will be a vector that is n.inputs long
@@ -70,13 +78,13 @@ backprop <- function(input, target, input.to.hidden.weights, hidden.to.output.we
   
   # Step 2. Calculate the forward pass on the network. This gets us the activity of the
   # hidden and output layers for a particular set of inputs.
-  activations <- forward.pass(input)
+  activations <- forward.pass(input, input.to.hidden.weights, hidden.to.output.weights)
   output.activation <- activations$output
   hidden.activation <- activations$hidden
   
   # Step 3. Find the error on the output units. We can find the error just like we did 
   # with the delta rule. Just subtract the actual output from the desired output.
-  output.error <- NA # replace NA with correct code.
+  output.error <- target -  output.activation 
   
   # Step 4. We need to multiply the error for a node (an element in the output.error vector)
   # by the derivative of the activation function for the node. The activation function is the
@@ -84,13 +92,16 @@ backprop <- function(input, target, input.to.hidden.weights, hidden.to.output.we
   # Calculate a "weighted" error in two steps:
   # 1) Find the derivative (slope) for each output node at the level of activation of that node.
   # 2) Multiple this by the node's error to get the weighted error.
-  output.slope <- NA
-  output.weighted.error <- NA
+  z <- (1 / (1 + exp(-output.activation)))
+  output.slope <- z * (1 - z)
+  output.weighted.error <- output.slope * output.error
   
   # Step 5. Find the change in the hidden to output weights by applying the delta rule, using the
   # weighted error instead of the error.
   for(o in 1:n.output){
-    delta.hidden.to.output.weights[,o] <- NA
+    for (h in 1:n.hidden) {
+      delta.hidden.to.output.weights[h,o] <- learning.rate*output.weighted.error[o]*hidden.activation[h]
+    }
   }
   
   # Step 6. Now we need to "backpropogate" the error from the output nodes to the hidden nodes,
@@ -101,15 +112,26 @@ backprop <- function(input, target, input.to.hidden.weights, hidden.to.output.we
   # is strongly connected to an output node, then it contributed a lot to the error of that node. If
   # a hidden node has almost no connection (weight near 0), then it contributed very little to the
   # error of the node.
-  hidden.error <- NA
+  
+  #has to initialize at 0 for the recursion in the for loop to work
+  hidden.error <- rep(0, n.hidden)
+  
+  for (h in 1:n.hidden) {
+    for(o in 1:n.output) {
+      hidden.error[h] <- hidden.error[h] + output.weighted.error[o]*hidden.to.output.weights[h,o]
+    }
+  }
   
   # Step 7. Just like the output layer, we need to calculate the weighted error for the hidden nodes.
-  hidden.slope <- NA
-  hidden.weighted.error <- NA
+  x <- (1 / (1 + exp(-hidden.activation)))
+  hidden.slope <- x * (1 - x)
+  hidden.weighted.error <- hidden.slope * hidden.error
   
   # Step 8. Apply the delta rule using the weighted errors.
   for(h in 1:n.hidden){
-    delta.input.to.hidden.weights[,h] <- NA
+    for(i in 1:n.inputs) {
+      delta.input.to.hidden.weights[i,h] <- learning.rate*hidden.weighted.error[h]*input[i]
+    }
   }
   
   # Step 9. Change the actual weights by the delta amount.
@@ -138,40 +160,43 @@ classification.correct <- function(input, target, input.to.hidden.weights, hidde
 
 # This function runs a single epoch, based on the epoch.train.size and epoch.test.size parameters
 # at the top of this file.
-epoch <- function(epoch.train.size, epoch.test.size){
+epoch <- function(input.to.hidden.weights, hidden.to.output.weights){
   for(t in sample(60000, epoch.train.size)){
-    weights <- backprop(trainData[t,], trainLabels[t,])
+    weights <- backprop(trainData[t,], trainLabels[t,], input.to.hidden.weights, hidden.to.output.weights)
     input.to.hidden.weights <- weights$input.to.hidden.weights
     hidden.to.output.weights <- weights$hidden.to.output.weights
   }
   error <- 0
   classification.acc <- 0
   for(t in sample(10000, epoch.test.size)){
-    error <- error + test.pattern(testData[t,], testLabels[t,])
-    classification.acc <- classification.acc + classification.correct(testData[t,], testLabels[t,])
+    error <- error + test.pattern(testData[t,], testLabels[t,], input.to.hidden.weights, hidden.to.output.weights)
+    classification.acc <- classification.acc + classification.correct(testData[t,], testLabels[t,], input.to.hidden.weights, hidden.to.output.weights)
   }
   classification.acc <- classification.acc / epoch.test.size
-  return(list(error=error, classification.accuracy=classification.acc))
+  return(list(error=error, classification.accuracy=classification.acc, input.to.hidden.weights=input.to.hidden.weights, hidden.to.output.weights=hidden.to.output.weights))
 }
 
 # Run a batch of epochs
-batch <- function(epochs){
+batch <- function(epochs, input.to.hidden.weights, hidden.to.output.weights){
   errors <- numeric(epochs)
   classifications <- numeric(epochs)
   pb <- txtProgressBar(min=0, max=epochs, style=3) 
   for(i in 1:epochs){
-    result <- epoch()
+    result <- epoch(input.to.hidden.weights, hidden.to.output.weights)
     errors[i] <- result$error
     classifications[i] <- result$classification.accuracy
+    input.to.hidden.weights <- result$input.to.hidden.weights
+    hidden.to.output.weights <- result$hidden.to.output.weights
     setTxtProgressBar(pb, i)
   }
   return(data.frame(epoch=1:epochs, error=errors, accuracy=classifications))
 }
 
 # Uncomment these lines when you are ready to test the code.
-# result <- batch(300)  # 300 epochs should be enough to reach >80% accuracy.
-# plot(result$accuracy) # plot the accuracy of the network over training (should increase).
-# plot(result$error) # plot the error at the output layer over time (should decrease).
+result <- batch(300, input.to.hidden.weights, hidden.to.output.weights)  # 300 epochs should be enough to reach >80% accuracy.
+plot(result$accuracy) # plot the accuracy of the network over training (should increase).
+plot(result$error) # plot the error at the output layer over time (should decrease).
+
 
 # Try adjusting various parameters of the network (number of hidden layer nodes, learning rate) to see if you can improve learning. 
 
