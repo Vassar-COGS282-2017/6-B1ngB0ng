@@ -99,9 +99,7 @@ backprop <- function(input, target, input.to.hidden.weights, hidden.to.output.we
   # Step 5. Find the change in the hidden to output weights by applying the delta rule, using the
   # weighted error instead of the error.
   for(o in 1:n.output){
-    for (h in 1:n.hidden) {
-      delta.hidden.to.output.weights[h,o] <- learning.rate*output.weighted.error[o]*hidden.activation[h]
-    }
+      delta.hidden.to.output.weights[,o] <- learning.rate*output.weighted.error[o]*hidden.activation
   }
   
   # Step 6. Now we need to "backpropogate" the error from the output nodes to the hidden nodes,
@@ -117,9 +115,7 @@ backprop <- function(input, target, input.to.hidden.weights, hidden.to.output.we
   hidden.error <- rep(0, n.hidden)
   
   for (h in 1:n.hidden) {
-    for(o in 1:n.output) {
-      hidden.error[h] <- hidden.error[h] + output.weighted.error[o]*hidden.to.output.weights[h,o]
-    }
+      hidden.error[h] <- sum(output.weighted.error*hidden.to.output.weights[h,])
   }
   
   # Step 7. Just like the output layer, we need to calculate the weighted error for the hidden nodes.
@@ -129,9 +125,7 @@ backprop <- function(input, target, input.to.hidden.weights, hidden.to.output.we
   
   # Step 8. Apply the delta rule using the weighted errors.
   for(h in 1:n.hidden){
-    for(i in 1:n.inputs) {
-      delta.input.to.hidden.weights[i,h] <- learning.rate*hidden.weighted.error[h]*input[i]
-    }
+      delta.input.to.hidden.weights[,h] <- learning.rate*hidden.weighted.error[h]*input
   }
   
   # Step 9. Change the actual weights by the delta amount.
@@ -155,7 +149,10 @@ test.pattern <- function(input, target, input.to.hidden.weights, hidden.to.outpu
 # FALSE. This function represents the best guess of the network. We will use it to interpret the
 # output of the network as an identification of the digit.
 classification.correct <- function(input, target, input.to.hidden.weights, hidden.to.output.weights){
-  return(NA)
+ is.correct <- F
+  activations <- forward.pass(input, input.to.hidden.weights, hidden.to.output.weights)
+  if(which(max(activations$output)==activations$output)==which(target==1)){is.correct <- T}
+return(is.correct)
 }
 
 # This function runs a single epoch, based on the epoch.train.size and epoch.test.size parameters
